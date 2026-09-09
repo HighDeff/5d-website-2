@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lilly's Fashion Couture - Responsive Mode v2024.01.20</title>
+
+    <!-- Force no cache for responsive mode -->
+    <meta
+      http-equiv="Cache-Control"
+      content="no-cache, no-store, must-revalidate, max-age=0"
+    />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="Thu, 01 Jan 1970 00:00:00 GMT" />
+
+    <!-- Enhanced responsive viewport -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=0.5, maximum-scale=3.0"
+    />
+
+    <!-- PWA and mobile optimization -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="theme-color" content="#8b5cf6" />
+
+    <style>
+      /* Reset and base styles */
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+        -moz-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        min-height: 100dvh; /* Dynamic viewport height */
+        overflow-x: hidden;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.5;
+      }
+
+      #root {
+        min-height: 100vh;
+        min-height: 100dvh;
+        width: 100%;
+        position: relative;
+      }
+
+      /* Version indicator for responsive mode */
+      .version-indicator {
+        position: fixed;
+        top: 0;
+        right: 0;
+        background: rgba(139, 92, 246, 0.9);
+        color: white;
+        padding: 4px 8px;
+        font-size: 10px;
+        z-index: 9999;
+        border-radius: 0 0 0 4px;
+        opacity: 0.7;
+      }
+
+      /* Enhanced loading */
+      .loading {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        min-height: 100dvh;
+        background: linear-gradient(
+          135deg,
+          #f8fafc 0%,
+          #fdf2f8 50%,
+          #faf5ff 100%
+        );
+        position: relative;
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top: 4px solid #8b5cf6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      }
+
+      .loading-text {
+        color: #6b7280;
+        font-size: 14px;
+        text-align: center;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Responsive text scaling */
+      @media (max-width: 480px) {
+        html {
+          font-size: 14px;
+        }
+      }
+
+      @media (min-width: 481px) and (max-width: 768px) {
+        html {
+          font-size: 15px;
+        }
+      }
+
+      @media (min-width: 769px) {
+        html {
+          font-size: 16px;
+        }
+      }
+
+      /* Builder.io iframe optimization */
+      .iframe-mode {
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      .iframe-mode body {
+        overflow-x: hidden !important;
+      }
+
+      /* Force hardware acceleration */
+      #root > * {
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="version-indicator">v2024.01.20-responsive</div>
+
+    <div id="root">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">
+          Loading Lilly's Fashion Couture<br />
+          <small>Responsive Mode Enhanced</small>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // Enhanced cache busting
+      const version = "2024.01.20";
+      const cacheBuster = Date.now();
+
+      console.log(
+        `🚀 Loading Lilly's Fashion Couture - Responsive v${version}`,
+      );
+
+      // Import with cache busting
+      import(`/client/main.tsx?v=${version}&cb=${cacheBuster}`)
+        .then(() => {
+          console.log("✅ App loaded successfully");
+        })
+        .catch((error) => {
+          console.error("❌ App loading failed:", error);
+        });
+
+      // Enhanced loading state management
+      let loadingTimeout;
+
+      function hideLoading() {
+        const loading = document.querySelector(".loading");
+        if (loading) {
+          loading.style.opacity = "0";
+          loading.style.transition = "opacity 0.3s ease";
+          setTimeout(() => {
+            loading.style.display = "none";
+          }, 300);
+        }
+      }
+
+      // Multiple ways to detect app load
+      window.addEventListener("load", hideLoading);
+      document.addEventListener("DOMContentLoaded", () => {
+        loadingTimeout = setTimeout(hideLoading, 3000); // Fallback timeout
+      });
+
+      // Clear timeout if app loads faster
+      window.addEventListener("load", () => {
+        if (loadingTimeout) clearTimeout(loadingTimeout);
+      });
+
+      // Enhanced iframe detection and handling
+      if (window.parent !== window) {
+        console.log("🖼️ Running in iframe (Builder.io preview mode)");
+        document.body.classList.add("iframe-mode");
+
+        // Enhanced iframe communication
+        const sendHeightUpdate = () => {
+          if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage(
+              {
+                type: "resize",
+                height: document.body.scrollHeight,
+                width: document.body.scrollWidth,
+                timestamp: Date.now(),
+              },
+              "*",
+            );
+          }
+        };
+
+        // Send height updates on various events
+        window.addEventListener("resize", sendHeightUpdate);
+        window.addEventListener("load", sendHeightUpdate);
+
+        // Periodic height updates for dynamic content
+        setInterval(sendHeightUpdate, 1000);
+      } else {
+        console.log("🌐 Running in standalone mode");
+      }
+
+      // Force refresh mechanism for cached content
+      if (window.location.search.includes("refresh=true")) {
+        console.log("🔄 Force refresh requested");
+        window.location.reload(true);
+      }
+
+      // Add refresh parameter to URL for next load
+      if (!window.location.search.includes("refresh=")) {
+        const separator = window.location.search ? "&" : "?";
+        window.history.replaceState(
+          {},
+          "",
+          `${window.location.pathname}${window.location.search}${separator}refresh=true`,
+        );
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lilly's Fashion Couture - Enhanced Responsive</title>
+
+    <!-- Enhanced responsive handling for mobile devices -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=0.8, maximum-scale=3.0, viewport-fit=cover"
+    />
+
+    <!-- Additional mobile optimizations -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Lilly's Fashion" />
+
+    <!-- Cache busting for better updates -->
+    <meta
+      http-equiv="Cache-Control"
+      content="no-cache, no-store, must-revalidate"
+    />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <!-- Responsive meta tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <style>
+      /* Enhanced responsive handling */
+      html {
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      #root {
+        min-height: 100vh;
+        width: 100%;
+      }
+
+      /* Loading spinner */
+      .loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(
+          135deg,
+          #f8fafc 0%,
+          #fdf2f8 50%,
+          #faf5ff 100%
+        );
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top: 4px solid #8b5cf6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Enhanced responsive breakpoints */
+      @media (max-width: 480px) {
+        html {
+          font-size: 14px;
+        }
+        body {
+          font-size: 14px;
+        }
+
+        /* Mobile-specific optimizations */
+        * {
+          -webkit-tap-highlight-color: rgba(139, 92, 246, 0.3);
+        }
+
+        button,
+        a {
+          min-height: 44px; /* iOS accessibility guideline */
+          min-width: 44px;
+        }
+      }
+
+      @media (min-width: 481px) and (max-width: 768px) {
+        html {
+          font-size: 15px;
+        }
+        body {
+          font-size: 15px;
+        }
+      }
+
+      @media (min-width: 769px) and (max-width: 1024px) {
+        body {
+          font-size: 16px;
+        }
+      }
+
+      @media (min-width: 1025px) {
+        body {
+          font-size: 16px;
+        }
+      }
+
+      /* Touch device optimizations */
+      @media (hover: none) and (pointer: coarse) {
+        button:hover {
+          transform: scale(1.05);
+          transition: transform 0.2s ease;
+        }
+      }
+
+      /* Enhanced iframe compatibility for Builder.io */
+      .iframe-mode {
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      /* Mobile navigation improvements */
+      @media (max-width: 1024px) {
+        .mobile-optimized {
+          padding: 0.5rem;
+        }
+
+        .mobile-nav {
+          padding: 0.75rem 1rem;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root">
+      <!-- Loading indicator -->
+      <div class="loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/client/main.tsx"></script>
+
+    <script type="module">
+      // Remove loading indicator once app loads
+      window.addEventListener("load", () => {
+        const loading = document.querySelector(".loading");
+        if (loading) {
+          loading.style.opacity = "0";
+          setTimeout(() => {
+            loading.style.display = "none";
+          }, 300);
+        }
+      });
+
+      // Enhanced responsive mode compatibility
+      if (window.parent !== window) {
+        // We're in an iframe (like Builder.io preview)
+        document.body.classList.add("iframe-mode");
+
+        // Better iframe communication
+        window.addEventListener("resize", () => {
+          if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage(
+              {
+                type: "resize",
+                height: document.body.scrollHeight,
+              },
+              "*",
+            );
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
