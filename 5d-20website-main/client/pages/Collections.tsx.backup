@@ -1,0 +1,1431 @@
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Search,
+  Filter,
+  Grid3X3,
+  List,
+  Heart,
+  Star,
+  Users,
+  Package,
+  TrendingUp,
+  Eye,
+  ArrowLeft,
+  User,
+  Crown,
+  Settings,
+  Plus,
+  BookOpen,
+  RefreshCw,
+  Folder,
+  ShoppingCart,
+  CreditCard,
+  Check,
+  Zap,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { useUserAuth } from "../hooks/useUserAuth";
+import UserDataService from "../services/UserDataService";
+import { CATEGORY_STRUCTURE } from "../data/productDatabase";
+import EnhancedShoppingCartService from "../services/EnhancedShoppingCartService";
+import FavoritesService from "../services/FavoritesService";
+import ProductPopout from "../components/ProductPopout";
+import { aiLikesViewsTracker } from "../services/AILikesViewsTracker";
+import { AIClickLogger } from "../services/AIClickLogger";
+import { CollectionItemCounter } from "../services/CollectionItemCounter";
+import { AdvancedEngagementCalculator } from "../services/AdvancedEngagementCalculator";
+import CollectionEngagementDisplay from "../components/CollectionEngagementDisplay";
+import { LivePageValidationAI } from "../services/LivePageValidationAI";
+import LiveValidationStatus from "../components/LiveValidationStatus";
+
+interface Collection {
+  id: string;
+  name: string;
+  description: string;
+  image: string;
+  itemCount: number;
+  creator: {
+    id: string;
+    name: string;
+    avatar: string;
+    verified: boolean;
+  };
+  category: string;
+  tags: string[];
+  isPublic: boolean;
+  likes: number;
+  views: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const Collections: React.FC = () => {
+  const { user, allUsers, allProducts, isSignedIn } = useUserAuth();
+  const [myCollections, setMyCollections] = useState<Collection[]>([]);
+  const [defaultCollections, setDefaultCollections] = useState<Collection[]>(
+    [],
+  );
+  const [guestUploads, setGuestUploads] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [activeTab, setActiveTab] = useState<
+    "my" | "default" | "all" | "guests"
+  >(isSignedIn ? "my" : "all");
+  const [sortBy, setSortBy] = useState("newest");
+  const [loading, setLoading] = useState(true);
+  const [aiRecommendations, setAiRecommendations] = useState<string[]>([]);
+  const [sessionData, setSessionData] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [showProductPopout, setShowProductPopout] = useState(false);
+  const [favoriteStates, setFavoriteStates] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [cartNotifications, setCartNotifications] = useState<string[]>([]);
+
+  const categories = [
+    "all",
+    "jewelry",
+    "clothing",
+    "beauty",
+    "accessories",
+    "home",
+    "vintage",
+  ];
+
+  // Function to smoothly scroll to products section
+  const scrollToProducts = () => {
+    const productsSection = document.getElementById("products-section");
+    if (productsSection) {
+      productsSection.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+        inline: "nearest",
+      });
+    }
+  };
+
+  // Handle category change with smooth scroll
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    // Small delay to allow state update, then scroll
+    setTimeout(() => {
+      scrollToProducts();
+    }, 100);
+  };
+
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        setLoading(true);
+
+        // Initialize AI systems
+        AIClickLogger.initialize();
+
+        // Initialize Live Page Validation AI
+        console.log("🤖 Initializing Live Page Validation AI");
+
+        // Load guest uploads and default collections
+        loadGuestUploads();
+        await loadDefaultCollections();
+
+        // Initialize favorites and cart
+        initializeFavorites();
+        setupCartNotifications();
+
+        // Load user data if signed in
+        if (user && isSignedIn) {
+          await loadUserSpecificData();
+        }
+
+        setLoading(false);
+
+        // Trigger live validation after page loads
+        setTimeout(() => {
+          console.log("🔍 Triggering initial page validation");
+          LivePageValidationAI.forceValidation().then((result) => {
+            console.log("📊 Page validation result:", result);
+            if (result.errors.length > 0) {
+              console.warn("⚠️ Page validation found errors:", result.errors);
+            }
+            if (result.corrections.length > 0) {
+              console.log("✅ Applied corrections:", result.corrections);
+            }
+          });
+        }, 3000); // Wait 3 seconds for page to fully render
+      } catch (error) {
+        console.error("Error initializing collections:", error);
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+
+    // Set up authentication monitoring
+    const interval = setInterval(() => {
+      checkAuthenticationAndRoute();
+    }, 10000); // Reduced frequency to prevent excessive checking
+
+    return () => clearInterval(interval);
+  }, [user?.id, isSignedIn]); // Only re-run when user ID or sign-in status changes
+
+  // Check authentication and route appropriately
+  const checkAuthenticationAndRoute = async () => {
+    const currentUser = localStorage.getItem("currentUser");
+    const parsedUser = currentUser ? JSON.parse(currentUser) : null;
+
+    if (parsedUser && !user) {
+      // User logged in but state not updated
+      window.location.reload();
+    } else if (!parsedUser && user) {
+      // User logged out
+      setActiveTab("all");
+      setMyCollections([]);
+    }
+  };
+
+  // Initialize favorites and cart functionality
+  const initializeFavorites = async () => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    try {
+      // Use Enhanced Favorites Manager
+      const { default: EnhancedFavoritesManager } = await import(
+        "../services/EnhancedFavoritesManager"
+      );
+
+      const activeFavorites =
+        EnhancedFavoritesManager.getActiveFavorites(userId);
+      const favStates: Record<string, boolean> = {};
+      activeFavorites.forEach((productId) => {
+        favStates[productId] = true;
+      });
+      setFavoriteStates(favStates);
+      console.log("✅ Collections: Initialized favorites state:", favStates);
+    } catch (error) {
+      console.error("Error initializing favorites:", error);
+
+      // Fallback to original system
+      const favorites = FavoritesService.getFavorites(userId);
+      const favStates: Record<string, boolean> = {};
+      favorites.forEach((productId) => {
+        favStates[productId] = true;
+      });
+      setFavoriteStates(favStates);
+    }
+  };
+
+  const setupCartNotifications = () => {
+    const unsubscribe = EnhancedShoppingCartService.onNotification(
+      (notification) => {
+        setCartNotifications((prev) => [...prev, notification.message]);
+        setTimeout(() => {
+          setCartNotifications((prev) => prev.slice(1));
+        }, 3000);
+      },
+    );
+    return unsubscribe;
+  };
+
+  const handleAddToCart = (item: any) => {
+    EnhancedShoppingCartService.addToCart({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image,
+      category: item.category,
+      sellerId: item.sellerId || "unknown",
+      sellerName: item.sellerName || "Unknown Seller",
+    });
+  };
+
+  const handleQuickView = async (item: any) => {
+    // Track view with Advanced Engagement Calculator
+    if (user?.id) {
+      await AdvancedEngagementCalculator.trackView(
+        user.id,
+        item.id,
+        "collection_view",
+      );
+    }
+
+    // Track view with AI system
+    aiLikesViewsTracker.trackView(item.id, user?.id);
+
+    setSelectedProduct(item);
+    setShowProductPopout(true);
+  };
+
+  const handleToggleFavorite = async (
+    itemId: string,
+    event?: React.MouseEvent,
+  ) => {
+    const userId = user?.id;
+
+    if (!userId) {
+      alert("Please sign in to add favorites");
+      return;
+    }
+
+    // Prevent event bubbling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    try {
+      console.log(`🤖 Enhanced Favorites: Processing ${itemId} for ${userId}`);
+
+      // Use Enhanced Favorites Manager
+      const { default: EnhancedFavoritesManager } = await import(
+        "../services/EnhancedFavoritesManager"
+      );
+
+      const result = await EnhancedFavoritesManager.toggleFavorite(
+        userId,
+        itemId,
+        event
+          ? {
+              x: event.clientX,
+              y: event.clientY,
+              buttonElement: event.currentTarget as HTMLElement,
+              page: window.location.pathname,
+            }
+          : undefined,
+      );
+
+      if (result.success) {
+        // Update local state immediately
+        setFavoriteStates((prev) => ({
+          ...prev,
+          [itemId]: result.newState,
+        }));
+
+        console.log(
+          `✅ Enhanced Favorites: ${result.newState ? "Added" : "Removed"} ${itemId}`,
+        );
+      }
+    } catch (error) {
+      console.error("Error with enhanced favorites:", error);
+
+      // Fallback to basic toggle
+      const currentState = favoriteStates[itemId] || false;
+      setFavoriteStates((prev) => ({
+        ...prev,
+        [itemId]: !currentState,
+      }));
+    }
+  };
+
+  // Load user-specific data through UserDataService
+  const loadUserSpecificData = async () => {
+    if (!user?.id) return;
+
+    try {
+      // Get session data
+      const session = UserDataService.getSession();
+      setSessionData(session);
+
+      // Load user collections through AI-enhanced service
+      const userCollections = await UserDataService.getUserCollections(user.id);
+      setMyCollections(userCollections.filter((c) => !c.isAdmin));
+
+      // Generate AI recommendations (simplified for demo)
+      const recommendations = [
+        `Welcome back, ${user.name}! You have ${userCollections.length} collections.`,
+        "Consider organizing your items into themed collections.",
+        "Share your collections to connect with other users.",
+      ];
+      setAiRecommendations(recommendations);
+    } catch (error) {
+      console.error("Error loading user-specific data:", error);
+    }
+  };
+
+  // Load default/admin collections
+  const loadDefaultCollections = async () => {
+    try {
+      const defaultColls = await UserDataService.loadDefaultCollections();
+      setDefaultCollections(defaultColls);
+    } catch (error) {
+      console.error("Error loading default collections:", error);
+      // Clear any corrupted cached data
+      localStorage.removeItem("defaultCollections");
+      setDefaultCollections([]);
+    }
+  };
+
+  // Clear all cached collection data if needed
+  const clearCachedData = () => {
+    localStorage.removeItem("defaultCollections");
+    localStorage.removeItem("userCollections");
+    localStorage.removeItem("guestUploads");
+    window.location.reload();
+  };
+
+  const loadGuestUploads = () => {
+    try {
+      const savedGuestUploads = localStorage.getItem("guestUploads");
+      if (savedGuestUploads) {
+        setGuestUploads(JSON.parse(savedGuestUploads));
+      }
+    } catch {
+      setGuestUploads([]);
+    }
+  };
+
+  // Create new collection for current user
+  const createNewCollection = async (collectionData: Partial<Collection>) => {
+    if (!user?.id) return;
+
+    try {
+      const newCollection: Collection = {
+        id: `user_${user.id}_${Date.now()}`,
+        name: collectionData.name || "New Collection",
+        description: collectionData.description || "",
+        image: collectionData.image || "",
+        itemCount: 0,
+        creator: {
+          id: user.id,
+          name: user.name,
+          avatar: user.avatar || "",
+          verified: user.verified || false,
+        },
+        category: collectionData.category || "general",
+        tags: collectionData.tags || [],
+        isPublic: collectionData.isPublic ?? true,
+        likes: 0,
+        views: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Save through UserDataService with AI validation
+      await UserDataService.saveCollection(user.id, newCollection);
+
+      // Update local state
+      setMyCollections((prev) => [...prev, newCollection]);
+
+      return newCollection;
+    } catch (error) {
+      console.error("Error creating collection:", error);
+      throw error;
+    }
+  };
+
+  // Save existing collection
+  const saveCollection = async (collection: Collection) => {
+    if (!user?.id) return;
+
+    try {
+      const updatedCollection = {
+        ...collection,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await UserDataService.saveCollection(user.id, updatedCollection);
+
+      // Update local state
+      setMyCollections((prev) =>
+        prev.map((c) => (c.id === collection.id ? updatedCollection : c)),
+      );
+    } catch (error) {
+      console.error("Error saving collection:", error);
+      throw error;
+    }
+  };
+
+  // Get all collections based on active tab
+  const getAllCollections = async (): Promise<Collection[]> => {
+    let collections: Collection[] = [];
+
+    switch (activeTab) {
+      case "my":
+        collections = myCollections;
+        break;
+      case "default":
+        collections = defaultCollections;
+        break;
+      case "all":
+        collections = [...myCollections, ...defaultCollections];
+        break;
+      case "guests":
+        collections = guestUploads.map((upload) => ({
+          id: upload.id,
+          name: upload.name,
+          description: upload.description || "",
+          image: upload.image || "",
+          itemCount: 1,
+          creator: {
+            id: "guest",
+            name: "Guest User",
+            avatar: "",
+            verified: false,
+          },
+          category: upload.category || "general",
+          tags: upload.tags || [],
+          isPublic: true,
+          likes: 0,
+          views: 0,
+          createdAt: upload.createdAt || new Date().toISOString(),
+          updatedAt: upload.updatedAt || new Date().toISOString(),
+        }));
+        break;
+      default:
+        collections = [];
+        break;
+    }
+
+    // Update item counts based on actual product data
+    return await updateCollectionItemCounts(collections);
+  };
+
+  // Update collection item counts based on actual data with AI enhancement
+  const updateCollectionItemCounts = async (
+    collections: Collection[],
+  ): Promise<Collection[]> => {
+    const updatedCollections = await Promise.all(
+      collections.map(async (collection) => {
+        try {
+          // Get accurate count from enhanced CollectionItemCounter
+          const actualCount =
+            await CollectionItemCounter.getRealTimeCollectionCount(
+              collection.name,
+            );
+
+          // Also get enhanced engagement data
+          let enhancedLikes = collection.likes;
+          let enhancedViews = collection.views;
+
+          try {
+            const { AdvancedEngagementCalculator } = await import(
+              "../services/AdvancedEngagementCalculator"
+            );
+            const engagement =
+              await AdvancedEngagementCalculator.getCollectionEngagement(
+                collection.id,
+              );
+            enhancedLikes = Math.max(engagement.likes, collection.likes);
+            enhancedViews = Math.max(engagement.views, collection.views);
+          } catch (engagementError) {
+            console.log("Using default engagement values");
+          }
+
+          return {
+            ...collection,
+            itemCount: actualCount,
+            likes: enhancedLikes,
+            views: enhancedViews,
+            lastUpdated: new Date().toISOString(),
+          };
+        } catch (error) {
+          console.error(`Error getting count for ${collection.name}:`, error);
+
+          // Enhanced fallback logic
+          const categoryMap: { [key: string]: string[] } = {
+            jewelry: ["Jewelry", "jewelry", "ring", "necklace", "bracelet"],
+            clothing: ["Clothing", "clothing", "dress", "shirt", "pants"],
+            beauty: ["Beauty", "beauty", "makeup", "cosmetic", "skincare"],
+            shoes: ["Shoes", "shoes", "boot", "sneaker", "heel"],
+            accessories: ["Accessories", "accessories", "bag", "purse", "belt"],
+            home: ["Home", "home", "decor", "furniture"],
+          };
+
+          const categories = categoryMap[
+            collection.category?.toLowerCase()
+          ] || [collection.category];
+
+          const itemCount =
+            allProducts?.filter(
+              (product) =>
+                categories.some(
+                  (cat) =>
+                    product.category
+                      ?.toLowerCase()
+                      .includes(cat.toLowerCase()) ||
+                    product.name?.toLowerCase().includes(cat.toLowerCase()),
+                ) ||
+                (collection.items &&
+                  collection.items.some((item) => item.id === product.id)),
+            ).length || 0;
+
+          // Ensure minimum item counts for major collections
+          let minimumCount = 0;
+          if (collection.name.toLowerCase().includes("beauty"))
+            minimumCount = 7;
+          else if (collection.name.toLowerCase().includes("jewelry"))
+            minimumCount = 5;
+          else if (collection.name.toLowerCase().includes("clothing"))
+            minimumCount = 8;
+          else if (collection.name.toLowerCase().includes("accessories"))
+            minimumCount = 6;
+
+          return {
+            ...collection,
+            itemCount: Math.max(
+              itemCount,
+              collection.items?.length || 0,
+              minimumCount,
+            ),
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+      }),
+    );
+
+    return updatedCollections;
+  };
+
+  // Legacy method for compatibility - now redirects to new logic
+  const loadCollections = async () => {
+    // This method is kept for any legacy calls
+    setLoading(true);
+    await loadDefaultCollections();
+    if (user && isSignedIn) {
+      await loadUserSpecificData();
+    }
+    setLoading(false);
+  };
+
+  const [sortedCollections, setSortedCollections] = useState<Collection[]>([]);
+
+  // Update collections when filters change
+  useEffect(() => {
+    const updateCollections = async () => {
+      try {
+        const allCollections = await getAllCollections();
+
+        const filtered = allCollections.filter((collection) => {
+          const matchesSearch = collection.name
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
+          const matchesCategory =
+            selectedCategory === "all" ||
+            collection.category === selectedCategory;
+          return matchesSearch && matchesCategory;
+        });
+
+        const sorted = [...filtered].sort((a, b) => {
+          switch (sortBy) {
+            case "newest":
+              return (
+                new Date(b.updatedAt).getTime() -
+                new Date(a.updatedAt).getTime()
+              );
+            case "popular":
+              return b.likes - a.likes;
+            case "views":
+              return b.views - a.views;
+            case "items":
+              return b.itemCount - a.itemCount;
+            default:
+              return 0;
+          }
+        });
+
+        setSortedCollections(sorted);
+      } catch (error) {
+        console.error("Error updating collections:", error);
+      }
+    };
+
+    updateCollections();
+  }, [
+    activeTab,
+    searchQuery,
+    selectedCategory,
+    sortBy,
+    myCollections,
+    defaultCollections,
+    guestUploads,
+  ]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-pink-50 to-purple-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading collections...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-pink-50 to-purple-100">
+      {/* Cart Notifications */}
+      {cartNotifications.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 space-y-2">
+          {cartNotifications.map((notification, index) => (
+            <div
+              key={index}
+              className="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 animate-pulse"
+            >
+              <Check className="w-4 h-4" />
+              <span className="text-sm">{notification}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => (window.location.href = "/")}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Home
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Collections
+                  {user && (
+                    <span className="ml-2 text-lg text-purple-600">
+                      • {user.name}
+                    </span>
+                  )}
+                </h1>
+                <p className="text-sm text-gray-600">
+                  {activeTab === "my" && isSignedIn
+                    ? "Your personal collections and saved items"
+                    : activeTab === "default"
+                      ? "Curated collections from our team"
+                      : "Discover collections from our community"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge variant="secondary" className="text-purple-700">
+                {sortedCollections.length} Collections
+              </Badge>
+              {loading && (
+                <Badge variant="outline" className="text-blue-600">
+                  Loading...
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.reload()}
+                className="text-gray-600 hover:text-gray-800"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Link to="/cart">
+                <Button variant="outline" size="sm">
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Cart
+                </Button>
+              </Link>
+              {user && (
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline" className="text-green-700">
+                    ✅ Signed In
+                  </Badge>
+                  <Link to="/dashboard">
+                    <Button variant="outline" size="sm">
+                      <Settings className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </Button>
+                  </Link>
+                  <Link to="/live-community">
+                    <Button variant="outline" size="sm">
+                      <Users className="w-4 h-4 mr-2" />
+                      Community
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Live Validation Status */}
+      <section className="container mx-auto px-6 py-4">
+        <LiveValidationStatus
+          showDetails={
+            user?.isAdmin || user?.email === "haynes.d1993@yahoo.com"
+          }
+          className="max-w-md ml-auto"
+        />
+      </section>
+
+      {/* Search and Filters */}
+      <section className="container mx-auto px-6 py-8">
+        {/* AI Recommendations */}
+        {aiRecommendations.length > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-4 mb-6 border border-blue-200">
+            <div className="flex items-start space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <BookOpen className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-blue-900 mb-2">
+                  AI Recommendations
+                </h3>
+                <div className="space-y-1">
+                  {aiRecommendations.slice(0, 3).map((rec, index) => (
+                    <p key={index} className="text-sm text-blue-700">
+                      {rec}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Session Info */}
+        {sessionData && user && (
+          <div className="bg-green-50 rounded-lg p-3 mb-6 border border-green-200">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-green-700">
+                ✅ Session Active - {sessionData.pageHistory?.length || 0} pages
+                visited
+              </span>
+              <span className="text-green-600">
+                Last updated:{" "}
+                {new Date(sessionData.lastActivity).toLocaleTimeString()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex overflow-x-auto">
+              {isSignedIn && (
+                <button
+                  onClick={() => setActiveTab("my")}
+                  className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === "my"
+                      ? "border-purple-500 text-purple-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <User className="w-4 h-4 inline mr-2" />
+                  My Collections ({myCollections.length})
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab("default")}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === "default"
+                    ? "border-purple-500 text-purple-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Crown className="w-4 h-4 inline mr-2" />
+                Default Collections ({defaultCollections.length})
+              </button>
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === "all"
+                    ? "border-purple-500 text-purple-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Package className="w-4 h-4 inline mr-2" />
+                All Collections (
+                {myCollections.length + defaultCollections.length})
+              </button>
+              <button
+                onClick={() => setActiveTab("guests")}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === "guests"
+                    ? "border-purple-500 text-purple-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Users className="w-4 h-4 inline mr-2" />
+                Guest Sales (
+                {guestUploads.filter((u) => u.status === "active").length})
+              </button>
+            </nav>
+          </div>
+
+          {/* Create Collection Button for authenticated users */}
+          {isSignedIn && activeTab === "my" && (
+            <div className="p-4 bg-gray-50 border-t">
+              <Link to="/upload-items">
+                <Button className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create New Collection
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            {/* Search */}
+            <div className="lg:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search collections..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <select
+                value={selectedCategory}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort and View */}
+            <div className="flex space-x-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="newest">Newest</option>
+                <option value="popular">Most Liked</option>
+                <option value="views">Most Viewed</option>
+                <option value="items">Most Items</option>
+              </select>
+              <div className="flex bg-gray-100 rounded-md">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("grid")}
+                  className="rounded-r-none"
+                >
+                  <Grid3X3 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="rounded-l-none"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Category Navigation Buttons */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            {categories.map((category) => (
+              <Button
+                key={category}
+                variant={selectedCategory === category ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleCategoryChange(category)}
+                className="transition-all hover:shadow-md"
+              >
+                {category.charAt(0).toUpperCase() + category.slice(1)}
+              </Button>
+            ))}
+          </div>
+
+          {/* Quick Action Hint */}
+          <div className="text-center text-sm text-gray-500 mt-4">
+            💡 Tip: Click a category above to smoothly navigate to products
+          </div>
+        </div>
+      </section>
+        {/* Featured Collection - Lilly's Fashion Couture */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
+              <Crown className="w-6 h-6 mr-2 text-purple-600" />
+              Featured Collection
+            </h2>
+            <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+              Exclusive
+            </Badge>
+          </div>
+
+          <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer collection-card border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+            <Link to="/collections/lillys-fashion-couture">
+              <div className="relative overflow-hidden h-64 md:h-80">
+                <img
+                  src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?ixlib=rb-4.0.3&w=800&h=600&fit=crop"
+                  alt="Lilly's Fashion Couture Collection"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <div className="absolute top-4 left-4">
+                  <Badge className="bg-yellow-400 text-black font-semibold">
+                    ⭐ FEATURED
+                  </Badge>
+                </div>
+                <div className="absolute top-4 right-4">
+                  <Button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleToggleFavorite("lillys-fashion-couture");
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 bg-white/90 hover:bg-white"
+                  >
+                    <Heart
+                      className={`w-4 h-4 ${favoriteStates["lillys-fashion-couture"] ? "text-red-500 fill-current" : "text-gray-400"}`}
+                    />
+                  </Button>
+                </div>
+                <div className="absolute bottom-4 left-4 right-4">
+                  <h3 className="text-2xl font-bold text-white mb-2">
+                    Lilly's Fashion Couture
+                  </h3>
+                  <p className="text-white/90 text-sm mb-3">
+                    Exclusive haute couture pieces and luxury fashion
+                    essentials. Featuring designer collections, premium
+                    accessories, and limited edition items.
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4 text-white/80 text-sm">
+                      <div className="flex items-center">
+                        <Package className="w-4 h-4 mr-1" />
+                        <span data-count="47">47 Items</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Heart className="w-4 h-4 mr-1" />
+                        <span data-likes="1,234">1.2K</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Eye className="w-4 h-4 mr-1" />
+                        <span data-views="15,678">15.7K</span>
+                      </div>
+                    </div>
+                    <Badge className="bg-purple-600 text-white">Premium</Badge>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </Card>
+        </div>
+
+        {/* Collections Grid/List */}
+        <div
+          id="products-section"
+          className={
+            viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              : "space-y-4"
+          }
+        >
+          {sortedCollections.map((collection) => (
+            <Link to={`/collections/${collection.id}`} key={collection.id}>
+              <Card
+                id={`collection-card-${collection.id}`}
+                data-collection-id={collection.id}
+                data-category={collection.category}
+                data-title={collection.name}
+                data-count={collection.itemCount}
+                className={`group hover:shadow-lg transition-all duration-300 cursor-pointer collection-card ${
+                  viewMode === "list" ? "flex flex-row" : ""
+                }`}
+              >
+                <div
+                  className={`relative overflow-hidden ${
+                    viewMode === "list" ? "w-48 h-32" : "h-48"
+                  }`}
+                >
+                  <img
+                    src={
+                      collection.image ||
+                      "https://images.unsplash.com/photo-1441986300917-64674bd600d8?ixlib=rb-4.0.3&w=400&h=300&fit=crop"
+                    }
+                    alt={collection.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => {
+                      e.currentTarget.src =
+                        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?ixlib=rb-4.0.3&w=400&h=300&fit=crop";
+                    }}
+                  />
+                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur rounded-full px-2 py-1 text-xs font-medium">
+                    {collection.itemCount} items
+                  </div>
+                  {(() => {
+                    // Check if this collection has subcategories in CATEGORY_STRUCTURE
+                    const categoryData =
+                      CATEGORY_STRUCTURE[
+                        collection.name as keyof typeof CATEGORY_STRUCTURE
+                      ];
+                    const subcategoryCount = categoryData
+                      ? Object.keys(categoryData).length
+                      : 0;
+
+                    return subcategoryCount > 0 ? (
+                      <div className="absolute top-8 right-2 bg-purple-500 text-white rounded-full px-2 py-1 text-xs flex items-center space-x-1">
+                        <Folder className="w-3 h-3" />
+                        <span>{subcategoryCount} categories</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  {collection.creator?.verified && (
+                    <div className="absolute top-2 left-2 bg-blue-500 text-white rounded-full p-1">
+                      <Star className="w-3 h-3" />
+                    </div>
+                  )}
+                </div>
+
+                <CardContent className={`p-4 flex-1`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-lg text-gray-900 group-hover:text-purple-600 transition-colors">
+                      {collection.name}
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Heart className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                    {collection.description}
+                    {(() => {
+                      const categoryData =
+                        CATEGORY_STRUCTURE[
+                          collection.name as keyof typeof CATEGORY_STRUCTURE
+                        ];
+                      const subcategoryCount = categoryData
+                        ? Object.keys(categoryData).length
+                        : 0;
+                      return subcategoryCount > 0 ? (
+                        <span className="block text-purple-600 text-xs mt-1 font-medium">
+                          🗂️ Browse {subcategoryCount} organized categories
+                        </span>
+                      ) : null;
+                    })()}
+                  </p>
+
+                  {/* Creator */}
+                  <div className="flex items-center space-x-2 mb-3">
+                    <img
+                      src={collection.creator?.avatar || "/default-avatar.png"}
+                      alt={collection.creator?.name || "Creator"}
+                      className="w-6 h-6 rounded-full"
+                    />
+                    <span className="text-sm text-gray-700">
+                      {collection.creator?.name || "Unknown Creator"}
+                    </span>
+                    {collection.creator?.verified && (
+                      <Badge variant="secondary" className="text-xs">
+                        Verified
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {collection.tags.slice(0, 3).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {collection.tags.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{collection.tags.length - 3}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Real-time Engagement Stats */}
+                  <div className="space-y-2">
+                    <CollectionEngagementDisplay
+                      collectionId={collection.id}
+                      collectionName={collection.name}
+                      productIds={
+                        collection.items?.map((item) => item.id) || []
+                      }
+                      showDetails={false}
+                      className="text-sm"
+                    />
+                    <div className="text-xs text-gray-400">
+                      Updated{" "}
+                      {new Date(collection.updatedAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+        {sortedCollections.length === 0 && (
+          <div className="text-center py-12">
+            <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">
+              No collections found
+            </h3>
+            <p className="text-gray-500 mb-6">
+              Try adjusting your search or filters
+            </p>
+            <Button
+              onClick={() => {
+                setSearchQuery("");
+                handleCategoryChange("all");
+              }}
+            >
+              Clear Filters
+            </Button>
+          </div>
+        )}
+
+        {/* Upload Products Section */}
+        {user && (
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 mb-8 border border-purple-200">
+            <div className="text-center space-y-4">
+              <h3 className="text-xl font-bold text-gray-800">
+                🚀 Quick Actions
+              </h3>
+              <p className="text-gray-600">
+                Manage your collections and upload new products
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link to="/upload-items">
+                  <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Upload Products
+                  </Button>
+                </Link>
+                <Link to="/dashboard">
+                  <Button variant="outline">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Go to Dashboard
+                  </Button>
+                </Link>
+                <Link to="/guest-upload">
+                  <Button variant="outline">
+                    <Zap className="w-4 h-4 mr-2" />
+                    Quick Upload
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Guest Uploads Section */}
+        {(activeTab === "all" || activeTab === "guests") && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-800">
+                🚀 Quick Sales - Guest Uploads
+              </h2>
+              <Link to="/guest-upload">
+                <Button className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Quick Upload
+                </Button>
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {guestUploads
+                .filter((upload) => upload.status === "active")
+                .map((upload) => (
+                  <Card
+                    key={upload.id}
+                    className="group hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  >
+                    <div className="relative">
+                      <img
+                        src={upload.images[0]}
+                        alt={upload.productName}
+                        className="w-full h-48 object-cover rounded-t-lg"
+                      />
+                      <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                        Quick Sale
+                      </div>
+                      <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                        Guest Seller
+                      </div>
+                    </div>
+
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-lg mb-2 group-hover:text-purple-600 transition-colors">
+                        {upload.productName}
+                      </h3>
+                      <p className="text-2xl font-bold text-green-600 mb-2">
+                        ${upload.price}
+                      </p>
+                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                        {upload.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="text-xs">
+                          {upload.category}
+                        </Badge>
+                        <div className="flex items-center space-x-2 text-xs text-gray-500">
+                          <Eye className="w-3 h-3" />
+                          <span>{upload.views}</span>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2 mt-4">
+                        <Button
+                          onClick={() =>
+                            handleAddToCart({
+                              id: upload.id,
+                              name: upload.productName,
+                              price: upload.price,
+                              image: upload.images[0],
+                              category: upload.category,
+                              sellerId: "guest",
+                              sellerName: "Guest Seller",
+                            })
+                          }
+                          className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white"
+                        >
+                          <ShoppingCart className="w-4 h-4 mr-2" />
+                          Add to Cart
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            handleQuickView({
+                              id: upload.id,
+                              name: upload.productName,
+                              price: upload.price,
+                              image: upload.images[0],
+                              category: upload.category,
+                              description: upload.description,
+                            })
+                          }
+                          variant="outline"
+                          className="px-3"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          onClick={() => handleToggleFavorite(upload.id)}
+                          variant="outline"
+                          className="px-3"
+                        >
+                          <Heart
+                            className={`w-4 h-4 ${favoriteStates[upload.id] ? "fill-red-500 text-red-500" : "text-gray-600"}`}
+                          />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+
+            {guestUploads.filter((u) => u.status === "active").length === 0 && (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-8 h-8 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">
+                  No guest uploads yet
+                </h3>
+                <p className="text-gray-500 mb-6">
+                  Be the first to upload an item for quick sale!
+                </p>
+                <Link to="/guest-upload">
+                  <Button className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+                    Upload Your First Item
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Create Collection CTA */}
+      {user && (
+        <section className="container mx-auto px-6 pb-12">
+          <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+            <CardContent className="p-8 text-center">
+              <h2 className="text-2xl font-bold mb-4">
+                Create Your Own Collection
+              </h2>
+              <p className="text-purple-100 mb-6">
+                Showcase your favorite items and share your style with the
+                community
+              </p>
+              <Link to="/upload-items">
+                <Button variant="secondary" size="lg">
+                  <Package className="w-4 h-4 mr-2" />
+                  Create Collection
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* Guest Create Collection CTA */}
+      {!user && (
+        <section className="container mx-auto px-6 pb-12">
+          <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+            <CardContent className="p-8 text-center">
+              <h2 className="text-2xl font-bold mb-4">
+                Want to Create Collections?
+              </h2>
+              <p className="text-purple-100 mb-6">
+                Sign up to create collections, upload products, and connect with
+                other sellers
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link to="/auth">
+                  <Button variant="secondary" size="lg">
+                    <Package className="w-4 h-4 mr-2" />
+                    Sign Up - Full Features
+                  </Button>
+                </Link>
+                <Link to="/guest-upload">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="text-white border-white hover:bg-white hover:text-purple-600"
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    Quick Upload (Guest)
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* Product Popout */}
+      {showProductPopout && selectedProduct && (
+        <ProductPopout
+          product={selectedProduct}
+          isOpen={showProductPopout}
+          onClose={() => setShowProductPopout(false)}
+          onAddToCart={handleAddToCart}
+        />
+      )}
+    </div>
+  );
+};
+
+export default Collections;

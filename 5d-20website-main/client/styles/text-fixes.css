@@ -1,0 +1,165 @@
+/* Text Visibility Fixes for Dark Mode */
+
+/* Ensure all text in dark containers is light colored */
+.bg-slate-900 *,
+.bg-slate-800 *,
+.bg-gray-900 *,
+.bg-gray-800 * {
+  color: inherit;
+}
+
+/* Force light text on dark backgrounds */
+.bg-slate-900,
+.bg-slate-800,
+.bg-gray-900,
+.bg-gray-800 {
+  color: #f1f5f9; /* slate-100 */
+}
+
+/* Specific text color overrides */
+.text-gray-900 {
+  color: #f1f5f9 !important; /* Convert dark text to light */
+}
+
+.text-gray-800 {
+  color: #e2e8f0 !important; /* Convert dark text to light */
+}
+
+.text-gray-700 {
+  color: #cbd5e1 !important; /* Convert dark text to light */
+}
+
+.text-gray-600 {
+  color: #94a3b8 !important; /* Keep as medium gray */
+}
+
+.text-black {
+  color: #f1f5f9 !important; /* Convert black text to light */
+}
+
+/* Badge and UI component fixes */
+.bg-green-100 {
+  background-color: #15803d !important; /* Use darker green background */
+  color: #dcfce7 !important; /* Light green text */
+}
+
+.bg-red-100 {
+  background-color: #dc2626 !important; /* Use darker red background */
+  color: #fecaca !important; /* Light red text */
+}
+
+.bg-blue-100 {
+  background-color: #2563eb !important; /* Use darker blue background */
+  color: #dbeafe !important; /* Light blue text */
+}
+
+.bg-yellow-100 {
+  background-color: #d97706 !important; /* Use darker yellow background */
+  color: #fef3c7 !important; /* Light yellow text */
+}
+
+.text-green-800 {
+  color: #dcfce7 !important; /* Light green */
+}
+
+.text-red-800 {
+  color: #fecaca !important; /* Light red */
+}
+
+.text-blue-800 {
+  color: #dbeafe !important; /* Light blue */
+}
+
+.text-yellow-800 {
+  color: #fef3c7 !important; /* Light yellow */
+}
+
+/* Alert and notification fixes */
+.alert {
+  color: #f1f5f9;
+}
+
+.alert * {
+  color: inherit;
+}
+
+/* Input and form fixes */
+.bg-white input,
+.bg-white textarea,
+.bg-white select {
+  background-color: #1e293b !important; /* slate-800 */
+  color: #f1f5f9 !important; /* slate-100 */
+  border-color: #475569 !important; /* slate-600 */
+}
+
+/* Card content fixes */
+.card-content p,
+.card-content span,
+.card-content div {
+  color: inherit;
+}
+
+/* Dropdown and popover fixes */
+.popover-content,
+.dropdown-content,
+.select-content {
+  background-color: #1e293b !important; /* slate-800 */
+  color: #f1f5f9 !important; /* slate-100 */
+  border-color: #475569 !important; /* slate-600 */
+}
+
+/* Modal and dialog fixes */
+.dialog-content,
+.modal-content {
+  background-color: #1e293b !important; /* slate-800 */
+  color: #f1f5f9 !important; /* slate-100 */
+}
+
+/* Button text fixes */
+.btn,
+.button {
+  color: inherit;
+}
+
+/* Link fixes */
+a {
+  color: #60a5fa; /* blue-400 */
+}
+
+a:hover {
+  color: #93c5fd; /* blue-300 */
+}
+
+/* Table fixes */
+table,
+th,
+td {
+  color: inherit;
+}
+
+/* Force high contrast for accessibility */
+@media (prefers-contrast: high) {
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-gray-900,
+  .bg-gray-800 {
+    color: #ffffff !important;
+  }
+  
+  .text-gray-600,
+  .text-gray-500,
+  .text-gray-400 {
+    color: #e5e7eb !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-gray-900,
+  .bg-gray-800 {
+    background-color: white !important;
+    color: black !important;
+  }
+}
